@@ -21,7 +21,7 @@ This program is free software: you can redistribute it and/or modify
 #include "lwip/tcp.h" // for the netconn structure
 #include "esp_system.h" // for esp_random
 #include "mbedtls/base64.h"
-#include "mbedtls/sha1.h"
+#include "mbedtls/md.h"
 #include <string.h>
 
 ws_client_t ws_connect_client(struct netconn* conn,
@@ -299,7 +299,7 @@ char* ws_read(ws_client_t* client,ws_header_t* header) {
 
 char* ws_hash_handshake(char* handshake,uint8_t len) {
   const char hash[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-  const uint8_t hash_len = sizeof(hash);
+  const uint8_t hash_len = sizeof(hash) - 1;
   char* ret;
   char key[64];
   unsigned char sha1sum[20];
@@ -309,8 +309,14 @@ char* ws_hash_handshake(char* handshake,uint8_t len) {
   ret = malloc(32);
 
   memcpy(key,handshake,len);
-  strlcpy(&key[len],hash,sizeof(key));
-  mbedtls_sha1((unsigned char*)key,len+hash_len-1,sha1sum);
+  memcpy(&key[len],hash,hash_len);
+  key[len+hash_len] = '\0';
+  const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA1);
+  if(!md_info || mbedtls_md(md_info, (const unsigned char*)key, len+hash_len, sha1sum) != 0){
+    free(ret);
+    return NULL;
+  }
+  //mbedtls_sha1((unsigned char*)key,len+hash_len-1,sha1sum);
   mbedtls_base64_encode(NULL, 0, &ret_len, sha1sum, 20);
   if(!mbedtls_base64_encode((unsigned char*)ret,32,&ret_len,sha1sum,20)) {
     ret[ret_len] = '\0';
